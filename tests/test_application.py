@@ -267,3 +267,38 @@ class TestClientApplicationForAuthorityMigration(unittest.TestCase):
         with self.assertRaises(ExpectedBehavior):
             self.app.acquire_token_silent(["different scope"], self.account)
 
+
+class TestClientApplicationWillGroupAccounts(unittest.TestCase):
+    def test_get_accounts(self):
+        client_id = "my_app"
+        scopes = ["scope_1", "scope_2"]
+        environment = "login.microsoftonline.com"
+        uid = "home_oid"
+        utid = "home_tenant_guid"
+        username = "Jane Doe"
+        cache = msal.SerializableTokenCache()
+        for tenant in ["contoso", "fabrikam"]:
+            cache.add({
+                "client_id": client_id,
+                "scope": scopes,
+                "token_endpoint":
+                    "https://{}/{}/oauth2/v2.0/token".format(environment, tenant),
+                "response": TokenCacheTestCase.build_response(
+                    uid=uid, utid=utid, access_token="at", refresh_token="rt",
+                    id_token=TokenCacheTestCase.build_id_token(
+                        aud=client_id,
+                        sub="oid_in_" + tenant,
+                        preferred_username=username,
+                        ),
+                    ),
+                })
+        app = ClientApplication(
+            client_id,
+            authority="https://{}/common".format(environment),
+            token_cache=cache)
+        self.assertEqual([{
+            "home_account_id": "{}.{}".format(uid, utid),
+            "environment": environment,
+            "username": username,
+            }], app.get_accounts(), "Should return one grouped account")
+

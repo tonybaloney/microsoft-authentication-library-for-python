@@ -411,10 +411,20 @@ class ClientApplication(object):
         return accounts
 
     def _find_msal_accounts(self, environment):
-        return [a for a in self.token_cache.find(
-            TokenCache.CredentialType.ACCOUNT, query={"environment": environment})
+        grouped_accounts = {
+            a.get("home_account_id"):  # Grouped by home tenant's id
+                {  # Only exposing minimal amount of information
+                    "home_account_id": a.get("home_account_id"),
+                    "environment": a.get("environment"),
+                    "username": a.get("username"),
+                }
+            for a in self.token_cache.find(
+                TokenCache.CredentialType.ACCOUNT,
+                query={"environment": environment})
             if a["authority_type"] in (
-                TokenCache.AuthorityType.ADFS, TokenCache.AuthorityType.MSSTS)]
+                TokenCache.AuthorityType.ADFS, TokenCache.AuthorityType.MSSTS)
+            }
+        return list(grouped_accounts.values())
 
     def _get_authority_aliases(self, instance):
         if not self.authority_groups:
