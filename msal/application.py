@@ -413,10 +413,15 @@ class ClientApplication(object):
     def _find_msal_accounts(self, environment):
         grouped_accounts = {
             a.get("home_account_id"):  # Grouped by home tenant's id
-                {  # Only exposing minimal amount of information
+                {  # These are minimal amount of non-tenant-specific account info
                     "home_account_id": a.get("home_account_id"),
                     "environment": a.get("environment"),
                     "username": a.get("username"),
+
+                    # The following fields for backward compatibility, for now
+                    "authority_type": a.get("authority_type"),
+                    "local_account_id": a.get("local_account_id"),  # Tenant-specific
+                    "realm": a.get("realm"),  # Tenant-specific
                 }
             for a in self.token_cache.find(
                 TokenCache.CredentialType.ACCOUNT,

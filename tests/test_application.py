@@ -296,9 +296,13 @@ class TestClientApplicationWillGroupAccounts(unittest.TestCase):
             client_id,
             authority="https://{}/common".format(environment),
             token_cache=cache)
-        self.assertEqual([{
-            "home_account_id": "{}.{}".format(uid, utid),
-            "environment": environment,
-            "username": username,
-            }], app.get_accounts(), "Should return one grouped account")
+        accounts = app.get_accounts()
+        self.assertEqual(1, len(accounts), "Should return one grouped account")
+        account = accounts[0]
+        self.assertEqual("{}.{}".format(uid, utid), account["home_account_id"])
+        self.assertEqual(environment, account["environment"])
+        self.assertEqual(username, account["username"])
+        self.assertIn("authority_type", account, "Backward compatibility")
+        self.assertIn("local_account_id", account, "Backward compatibility")
+        self.assertIn("realm", account, "Backward compatibility")
 
