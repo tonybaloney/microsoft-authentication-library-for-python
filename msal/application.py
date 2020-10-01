@@ -1,6 +1,9 @@
 import functools
 import json
 import time
+
+from msal.oauth2cli.authcode import obtain_auth_code
+
 try:  # Python 2
     from urlparse import urljoin
 except:  # Python 3
@@ -822,6 +825,33 @@ class ClientApplication(object):
             on_updating_rt=False,
             on_removing_rt=lambda rt_item: None,  # No OP
             )
+
+    def acquire_token_interactive(self,
+            scopes,  # type: list[str]
+            # additional_scope=None,  # type: Optional[list]
+            login_hint=None,  # type: Optional[str]
+            state=None,  # Recommended by OAuth2 for CSRF protection
+            redirect_uri=None,
+            response_type="code",  # Could be "token" if you use Implicit Grant
+            prompt=None,
+            nonce=None,
+            domain_hint=None,  # type: Optional[str]
+            claims_challenge=None,
+            **kwargs):
+        auth_url = self.get_authorization_request_url(scopes=scopes,
+                                                      login_hint=login_hint,
+                                                      state=state,
+                                                      redirect_uri=redirect_uri,
+                                                      response_type=response_type,
+                                                      prompt=prompt,
+                                                      nonce=nonce,
+                                                      domain_hint=domain_hint,
+                                                      claims_challenge=claims_challenge,
+                                                      **kwargs)
+        auth_code = obtain_auth_code(44331, auth_uri=auth_url)
+        return self.acquire_token_by_authorization_code(
+            auth_code, scopes, redirect_uri=redirect_uri,
+            nonce=nonce, claims_challenge=claims_challenge)
 
 
 class PublicClientApplication(ClientApplication):  # browser app or mobile app
