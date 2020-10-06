@@ -841,9 +841,7 @@ class ClientApplication(object):
             # additional_scope=None,  # type: Optional[list]
             login_hint=None,  # type: Optional[str]
             port=None,
-            response_type="code",  # Could be "token" if you use Implicit Grant
             prompt=None,
-            nonce=None,
             domain_hint=None,  # type: Optional[str]
             claims_challenge=None,
             **kwargs):
@@ -853,9 +851,8 @@ class ClientApplication(object):
         auth_url = self.get_authorization_request_url(scopes=scopes,
                                                       login_hint=login_hint,
                                                       redirect_uri=redirect_uri,
-                                                      response_type=response_type,
+                                                      response_type="code",
                                                       prompt=prompt,
-                                                      nonce=nonce,
                                                       domain_hint=domain_hint,
                                                       claims_challenge=claims_challenge,
                                                       **kwargs)
