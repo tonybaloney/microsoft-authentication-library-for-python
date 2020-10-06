@@ -44,7 +44,7 @@ def obtain_auth_code(listen_port, auth_uri=None):
             "link": auth_uri,
             "exit_hint": exit_hint,
             }))
-        browse(page)
+        browse(auth_uri)
     server = HTTPServer(("", int(listen_port)), AuthCodeReceiver)
     try:
         server.authcode = None
@@ -76,7 +76,7 @@ class AuthCodeReceiver(BaseHTTPRequestHandler):
         qs = parse_qs(urlparse(self.path).query)
         if qs.get('code'):  # Then store it into the server instance
             ac = self.server.authcode = qs['code'][0]
-            self._send_full_response('Authcode:\n{}'.format(ac))
+            self._send_full_response('Authcode:\n{}'.format(ac)) #This is where the exit message will go
             # NOTE: Don't do self.server.shutdown() here. It'll halt the server.
         elif qs.get('text') and qs.get('link'):  # Then display a landing page
             self._send_full_response(

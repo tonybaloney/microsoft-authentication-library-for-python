@@ -62,6 +62,16 @@ def _get_new_correlation_id():
     return str(uuid.uuid4())
 
 
+def _get_open_port():
+    import socket
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(("", 0))
+    s.listen(1)
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
 def _build_current_telemetry_request_header(public_api_id, force_refresh=False):
     return "1|{},{}|".format(public_api_id, "1" if force_refresh else "0")
 
@@ -830,17 +840,18 @@ class ClientApplication(object):
             scopes,  # type: list[str]
             # additional_scope=None,  # type: Optional[list]
             login_hint=None,  # type: Optional[str]
-            state=None,  # Recommended by OAuth2 for CSRF protection
-            redirect_uri=None,
+            port=None,
             response_type="code",  # Could be "token" if you use Implicit Grant
             prompt=None,
             nonce=None,
             domain_hint=None,  # type: Optional[str]
             claims_challenge=None,
             **kwargs):
+        if not port:
+            port = _get_open_port()
+        redirect_uri = "http://localhost:" + str(port)
         auth_url = self.get_authorization_request_url(scopes=scopes,
                                                       login_hint=login_hint,
-                                                      state=state,
                                                       redirect_uri=redirect_uri,
                                                       response_type=response_type,
                                                       prompt=prompt,
@@ -848,7 +859,7 @@ class ClientApplication(object):
                                                       domain_hint=domain_hint,
                                                       claims_challenge=claims_challenge,
                                                       **kwargs)
-        auth_code = obtain_auth_code(44331, auth_uri=auth_url)
+        auth_code = obtain_auth_code(port, auth_uri=auth_url)
         return self.acquire_token_by_authorization_code(
             auth_code, scopes, redirect_uri=redirect_uri,
             nonce=nonce, claims_challenge=claims_challenge)
