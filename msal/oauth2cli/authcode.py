@@ -52,7 +52,7 @@ def obtain_auth_code(listen_port, auth_uri=None):
             # Derived from
             # https://docs.python.org/2/library/basehttpserver.html#more-examples
             server.handle_request()
-        return server.authcode
+        return server.authcode, server.state
     finally:
         server.server_close()
 
@@ -76,6 +76,7 @@ class AuthCodeReceiver(BaseHTTPRequestHandler):
         qs = parse_qs(urlparse(self.path).query)
         if qs.get('code'):  # Then store it into the server instance
             ac = self.server.authcode = qs['code'][0]
+            self.server.state = qs['state'][0]
             self._send_full_response('Authcode:\n{}'.format(ac)) #This is where the exit message will go
             # NOTE: Don't do self.server.shutdown() here. It'll halt the server.
         elif qs.get('text') and qs.get('link'):  # Then display a landing page

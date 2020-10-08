@@ -1,5 +1,8 @@
+import base64
 import functools
+import hashlib
 import json
+import os
 import time
 
 from msal.oauth2cli.authcode import obtain_auth_code
@@ -306,6 +309,8 @@ class ClientApplication(object):
             nonce=None,
             domain_hint=None,  # type: Optional[str]
             claims_challenge=None,
+            code_challenge_method=None,
+            code_challenge=None,
             **kwargs):
         """Constructs a URL for you to start a Authorization Code Grant.
 
@@ -378,6 +383,8 @@ class ClientApplication(object):
             domain_hint=domain_hint,
             claims=_merge_claims_challenge_and_capabilities(
                 self._client_capabilities, claims_challenge),
+            code_challenge=code_challenge,
+            code_challenge_method=code_challenge_method
             )
 
     def acquire_token_by_authorization_code(
@@ -390,6 +397,7 @@ class ClientApplication(object):
                 # values MUST be identical.
             nonce=None,
             claims_challenge=None,
+            code_verifier=None,
             **kwargs):
         """The second half of the Authorization Code Grant.
 
@@ -444,7 +452,8 @@ class ClientApplication(object):
             data=dict(
                 kwargs.pop("data", {}),
                 claims=_merge_claims_challenge_and_capabilities(
-                    self._client_capabilities, claims_challenge)),
+                    self._client_capabilities, claims_challenge),
+                code_verifier=code_verifier),
             nonce=nonce,
             **kwargs)
 
@@ -847,19 +856,28 @@ class ClientApplication(object):
             **kwargs):
         if not port:
             port = _get_open_port()
-        redirect_uri = "http://localhost:" + str(port)
-        auth_url = self.get_authorization_request_url(scopes=scopes,
-                                                      login_hint=login_hint,
-                                                      redirect_uri=redirect_uri,
-                                                      response_type="code",
-                                                      prompt=prompt,
-                                                      domain_hint=domain_hint,
-                                                      claims_challenge=claims_challenge,
-                                                      **kwargs)
-        auth_code = obtain_auth_code(port, auth_uri=auth_url)
+        request_state = str(uuid.uuid4())
+        random_bytes = os.urandom(32)
+        code_verifier = (base64.urlsafe_b64encode(random_bytes).rstrip(b'=')).decode('ascii')
+        challenge_bytes = hashlib.sha256(code_verifier.encode('ascii')).digest()
+        code_challenge = base64.urlsafe_b64encode(challenge_bytes).rstrip(b'=').decode('ascii')
+        auth_url = self.get_authorization_request_url(
+            scopes=scopes,
+            login_hint=login_hint,
+            redirect_uri="http://localhost:%d" % port,
+            response_type="code",
+            state=request_state,
+            code_challenge=code_challenge,
+            code_challenge_method="S256",
+            prompt=prompt,
+            domain_hint=domain_hint,
+            claims_challenge=claims_challenge,)
+        auth_code, received_state = obtain_auth_code(port, auth_uri=auth_url)
+        if request_state != received_state:
+            raise ValueError("State does not match")
         return self.acquire_token_by_authorization_code(
             auth_code, scopes, redirect_uri=redirect_uri,
-            nonce=nonce, claims_challenge=claims_challenge)
+            claims_challenge=claims_challenge, code_verifier=code_verifier)
 
 
 class PublicClientApplication(ClientApplication):  # browser app or mobile app
