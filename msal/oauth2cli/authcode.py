@@ -23,8 +23,20 @@ from .oauth2 import Client
 
 logger = logging.getLogger(__name__)
 
+def default_browse(auth_uri):
+    controller = webbrowser.get()  # Get a default controller
+    # Some Linux Distro does not setup default browser properly,
+    # so we try to explicitly use some popular browser, if we found any.
+    for browser in ["chrome", "firefox", "safari", "windows-default"]:
+        try:
+            controller = webbrowser.get(browser)
+            break
+        except webbrowser.Error:
+            pass  # This browser is not installed. Try next one.
+    logger.info("Please open a browser on THIS device to visit: %s" % auth_uri)
+    controller.open(auth_uri)
 
-def obtain_auth_code(listen_port, auth_uri=None, browse=None):
+def obtain_auth_code(listen_port, auth_uri=None, browse=default_browse):
     """This function will start a web server listening on http://localhost:port
     and then you need to open a browser on this device and visit your auth_uri.
     When interaction finishes, this function will return the auth code,
@@ -60,18 +72,6 @@ def obtain_auth_code(listen_port, auth_uri=None, browse=None):
     finally:
         server.server_close()
 
-def browse(auth_uri):
-    controller = webbrowser.get()  # Get a default controller
-    # Some Linux Distro does not setup default browser properly,
-    # so we try to explicitly use some popular browser, if we found any.
-    for browser in ["chrome", "firefox", "safari", "windows-default"]:
-        try:
-            controller = webbrowser.get(browser)
-            break
-        except webbrowser.Error:
-            pass  # This browser is not installed. Try next one.
-    logger.info("Please open a browser on THIS device to visit: %s" % auth_uri)
-    controller.open(auth_uri)
 
 class AuthCodeReceiver(BaseHTTPRequestHandler):
     def do_GET(self):
