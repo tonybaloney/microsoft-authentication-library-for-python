@@ -5,7 +5,7 @@ import json
 import os
 import time
 
-from msal.oauth2cli.authcode import obtain_auth_code
+from msal.oauth2cli.authcode import obtain_auth_code, browse
 
 try:  # Python 2
     from urlparse import urljoin
@@ -852,7 +852,8 @@ class ClientApplication(object):
             port=None,
             prompt=None,
             domain_hint=None,  # type: Optional[str]
-            claims_challenge=None):
+            claims_challenge=None,
+            custom_browse=None):
         if not port:
             port = _get_open_port()
         request_state = str(uuid.uuid4())
@@ -871,11 +872,11 @@ class ClientApplication(object):
             prompt=prompt,
             domain_hint=domain_hint,
             claims_challenge=claims_challenge,)
-        auth_code, received_state = obtain_auth_code(port, auth_uri=auth_url)
+        auth_code, received_state = obtain_auth_code(port, auth_uri=auth_url, browse=custom_browse or browse)
         if request_state != received_state:
             raise ValueError("State does not match")
         return self.acquire_token_by_authorization_code(
-            auth_code, scopes, redirect_uri=redirect_uri,
+            auth_code, scopes, redirect_uri="http://localhost:%d" % port,
             claims_challenge=claims_challenge, code_verifier=code_verifier)
 
 

@@ -23,7 +23,8 @@ from .oauth2 import Client
 
 logger = logging.getLogger(__name__)
 
-def obtain_auth_code(listen_port, auth_uri=None):
+
+def obtain_auth_code(listen_port, auth_uri=None, browse=None):
     """This function will start a web server listening on http://localhost:port
     and then you need to open a browser on this device and visit your auth_uri.
     When interaction finishes, this function will return the auth code,
@@ -34,6 +35,7 @@ def obtain_auth_code(listen_port, auth_uri=None):
         Unless the authorization server supports dynamic port,
         you need to use the same port when you register with your app.
     :param auth_uri: If provided, this function will try to open a local browser.
+    :param browse: You can provide a custom browser action. By default, it will use a system browser
     :return: Hang indefinitely, until it receives and then return the auth code.
     """
     exit_hint = "Visit http://localhost:{p}?code=exit to abort".format(p=listen_port)
@@ -46,6 +48,8 @@ def obtain_auth_code(listen_port, auth_uri=None):
             }))
         browse(auth_uri)
     server = HTTPServer(("", int(listen_port)), AuthCodeReceiver)
+    server.error = "Error"
+    server.success = "Success"
     try:
         server.authcode = None
         while not server.authcode:
@@ -77,7 +81,7 @@ class AuthCodeReceiver(BaseHTTPRequestHandler):
         if qs.get('code'):  # Then store it into the server instance
             ac = self.server.authcode = qs['code'][0]
             self.server.state = qs['state'][0]
-            self._send_full_response('Authcode:\n{}'.format(ac)) #This is where the exit message will go
+            self._send_full_response('Authcode:\n{}'.format(self.server.success))
             # NOTE: Don't do self.server.shutdown() here. It'll halt the server.
         elif qs.get('text') and qs.get('link'):  # Then display a landing page
             self._send_full_response(
@@ -87,6 +91,11 @@ class AuthCodeReceiver(BaseHTTPRequestHandler):
                 ))
         else:
             self._send_full_response("This web service serves your redirect_uri")
+
+    def _redirect(self, url):
+        self.send_response(301)
+        self.send_header('Location', url)
+        self.end_headers()
 
     def _send_full_response(self, body, is_ok=True):
         self.send_response(200 if is_ok else 400)
