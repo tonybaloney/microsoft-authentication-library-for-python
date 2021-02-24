@@ -52,8 +52,14 @@ def decorate_scope(
         decorated = scope_set | reserved_scope
     return list(decorated)
 
+# Telemetry V4 constants
 CLIENT_REQUEST_ID = 'client-request-id'
 CLIENT_CURRENT_TELEMETRY = 'x-client-current-telemetry'
+AT_ABSENT = 2
+AT_EXPIRED = 3
+AT_AGING = 4
+FORCE_REFRESH = 5
+NON_SILENT_CALL = 6
 
 def _get_new_correlation_id():
     correlation_id = str(uuid.uuid4())
@@ -61,8 +67,16 @@ def _get_new_correlation_id():
     return correlation_id
 
 
-def _build_current_telemetry_request_header(public_api_id, force_refresh=False):
-    return "1|{},{}|".format(public_api_id, "1" if force_refresh else "0")
+def _build_current_telemetry_request_header(api_id, refresh_reason=None):
+    # https://identitydivision.visualstudio.com/DevEx/_git/AuthLibrariesApiReview?path=%2FTelemetry%2FMSALServerSideTelemetry.md&_a=preview
+    refresh_reason = refresh_reason or NON_SILENT_CALL
+    assert refresh_reason in {  # Fail noisy at MSAL develop time if KeyError happens
+        AT_ABSENT, AT_EXPIRED, AT_AGING, FORCE_REFRESH, NON_SILENT_CALL}
+    return "4|{api_id},{force_refresh},{cache_refresh}|".format(
+        api_id=api_id,
+        force_refresh="1" if refresh_reason == FORCE_REFRESH else "0",
+        cache_refresh=refresh_reason,
+        )
 
 
 def extract_certs(public_cert_content):
@@ -722,7 +736,7 @@ class ClientApplication(object):
             - None when cache lookup does not yield a token.
         """
         result = self.acquire_token_silent_with_error(
-            scopes, account, authority, force_refresh,
+            scopes, account, authority=authority, force_refresh=force_refresh,
             claims_challenge=claims_challenge, **kwargs)
         return result if result and "error" not in result else None
 
@@ -838,9 +852,11 @@ class ClientApplication(object):
                 target=scopes,
                 query=query)
             now = time.time()
+            refresh_reason = AT_ABSENT
             for entry in matches:
                 expires_in = int(entry["expires_on"]) - now
                 if expires_in < 5*60:  # Then consider it expired
+                    refresh_reason = AT_EXPIRED
                     continue  # Removal is not necessary, it will be overwritten
                 logger.debug("Cache hit an AT")
                 access_token_from_cache = {  # Mimic a real response
@@ -849,12 +865,17 @@ class ClientApplication(object):
                     "expires_in": int(expires_in),  # OAuth2 specs defines it as int
                     }
                 if "refresh_on" in entry and int(entry["refresh_on"]) < now:  # aging
+                    refresh_reason = AT_AGING
                     break  # With a fallback in hand, we break here to go refresh
                 return access_token_from_cache  # It is still good as new
+        else:
+            refresh_reason = FORCE_REFRESH  # TODO: It could also mean claims_challenge
+        assert refresh_reason, "It should have been established at this point"
         try:
             result = self._acquire_token_silent_by_finding_rt_belongs_to_me_or_my_family(
                 authority, decorate_scope(scopes, self.client_id), account,
-                force_refresh=force_refresh, claims_challenge=claims_challenge, **kwargs)
+                refresh_reason=refresh_reason, claims_challenge=claims_challenge,
+                **kwargs)
             if (result and "error" not in result) or (not access_token_from_cache):
                 return result
         except:  # The exact HTTP exception is transportation-layer dependent
@@ -909,7 +930,8 @@ class ClientApplication(object):
     def _acquire_token_silent_by_finding_specific_refresh_token(
             self, authority, scopes, query,
             rt_remover=None, break_condition=lambda response: False,
-            force_refresh=False, correlation_id=None, claims_challenge=None, **kwargs):
+            refresh_reason=None, correlation_id=None, claims_challenge=None,
+            **kwargs):
         matches = self.token_cache.find(
             self.token_cache.CredentialType.REFRESH_TOKEN,
             # target=scopes,  # AAD RTs are scope-independent
@@ -932,7 +954,7 @@ class ClientApplication(object):
                 headers={
                     CLIENT_REQUEST_ID: correlation_id or _get_new_correlation_id(),
                     CLIENT_CURRENT_TELEMETRY: _build_current_telemetry_request_header(
-                        self.ACQUIRE_TOKEN_SILENT_ID, force_refresh=force_refresh),
+                        self.ACQUIRE_TOKEN_SILENT_ID, refresh_reason=refresh_reason),
                     },
                 data=dict(
                     kwargs.pop("data", {}),
@@ -993,7 +1015,7 @@ class ClientApplication(object):
             headers={
                 CLIENT_REQUEST_ID: _get_new_correlation_id(),
                 CLIENT_CURRENT_TELEMETRY: _build_current_telemetry_request_header(
-                    self.ACQUIRE_TOKEN_BY_REFRESH_TOKEN),
+                    self.ACQUIRE_TOKEN_BY_REFRESH_TOKEN, refresh_reason=FORCE_REFRESH),
             },
             rt_getter=lambda rt: rt,
             on_updating_rt=False,

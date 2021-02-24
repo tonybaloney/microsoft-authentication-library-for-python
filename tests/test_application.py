@@ -362,8 +362,10 @@ class TestApplicationForRefreshInBehaviors(unittest.TestCase):
         # a.k.a. Attempt to refresh unexpired token when AAD available
         self.populate_cache(access_token="old AT", expires_in=3599, refresh_in=-1)
         new_access_token = "new AT"
-        self.app._acquire_token_silent_by_finding_rt_belongs_to_me_or_my_family = (
-            lambda *args, **kwargs: {"access_token": new_access_token})
+        def _(*args, **kwargs):
+            self.assertEqual(AT_AGING, kwargs.get("refresh_reason"))  # Telemetry
+            return {"access_token": new_access_token}
+        self.app._acquire_token_silent_by_finding_rt_belongs_to_me_or_my_family = _
         self.assertEqual(
             new_access_token,
             self.app.acquire_token_silent(['s1'], self.account).get("access_token"))
