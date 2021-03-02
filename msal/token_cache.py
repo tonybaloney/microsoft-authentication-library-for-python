@@ -148,9 +148,9 @@ class TokenCache(object):
         target = ' '.join(event.get("scope", []))  # Per schema, we don't sort it
 
         with self._lock:
+            now = int(time.time() if now is None else now)
 
             if access_token:
-                now = int(time.time() if now is None else now)
                 expires_in = int(  # AADv1-like endpoint returns a string
 			response.get("expires_in", 3599))
                 ext_expires_in = int(  # AADv1-like endpoint returns a string
@@ -212,6 +212,7 @@ class TokenCache(object):
                     "environment": environment,
                     "client_id": event.get("client_id"),
                     "target": target,  # Optional per schema though
+                    "cached_at": str(now),  # Optional. Schema defines it as a string.
                     }
                 if "foci" in response:
                     rt["family_id"] = response["foci"]

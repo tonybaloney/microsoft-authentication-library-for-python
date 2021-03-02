@@ -80,6 +80,7 @@ class TokenCacheTestCase(unittest.TestCase):
             )
         self.assertEqual(
             {
+                'cached_at': "1000",
                 'client_id': 'my_client_id',
                 'credential_type': 'RefreshToken',
                 'environment': 'login.example.com',
@@ -153,6 +154,7 @@ class TokenCacheTestCase(unittest.TestCase):
             )
         self.assertEqual(
             {
+                'cached_at': "1000",
                 'client_id': 'my_client_id',
                 'credential_type': 'RefreshToken',
                 'environment': 'fs.msidlab8.com',
