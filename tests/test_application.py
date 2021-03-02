@@ -325,19 +325,18 @@ class TestApplicationForRefreshInBehaviors(unittest.TestCase):
     """The following test cases were based on design doc here
     https://identitydivision.visualstudio.com/DevEx/_git/AuthLibrariesApiReview?path=%2FRefreshAtExpirationPercentage%2Foverview.md&version=GBdev&_a=preview&anchor=scenarios
     """
+    authority_url = "https://login.microsoftonline.com/common"
+    scopes = ["s1", "s2"]
+    uid = "my_uid"
+    utid = "my_utid"
+    account = {"home_account_id": "{}.{}".format(uid, utid)}
+    rt = "this is a rt"
+    client_id = "my_app"
+    app = ClientApplication(client_id, authority=authority_url)
+
     def setUp(self):
-        self.authority_url = "https://login.microsoftonline.com/common"
-        self.authority = msal.authority.Authority(
-            self.authority_url, MinimalHttpClient())
-        self.scopes = ["s1", "s2"]
-        self.uid = "my_uid"
-        self.utid = "my_utid"
-        self.account = {"home_account_id": "{}.{}".format(self.uid, self.utid)}
-        self.rt = "this is a rt"
-        self.cache = msal.SerializableTokenCache()
-        self.client_id = "my_app"
-        self.app = ClientApplication(
-            self.client_id, authority=self.authority_url, token_cache=self.cache)
+        self.app.token_cache = self.cache = msal.SerializableTokenCache()
+        self.app.http_client = MinimalHttpClient()
 
     def populate_cache(self, access_token="at", expires_in=86400, refresh_in=43200):
         self.cache.add({
@@ -353,7 +352,9 @@ class TestApplicationForRefreshInBehaviors(unittest.TestCase):
     def test_fresh_token_should_be_returned_from_cache(self):
         # a.k.a. Return unexpired token that is not above token refresh expiration threshold
         access_token = "An access token prepopulated into cache"
-        self.populate_cache(access_token=access_token, expires_in=900, refresh_in=450)
+        self.populate_cache(access_token=access_token, expires_in=901, refresh_in=450)
+        self.app.http_client.post = lambda *args, **kwargs: self.fail(
+            "I/O shouldn't happen in cache hit scenario")
         self.assertEqual(
             access_token,
             self.app.acquire_token_silent(['s1'], self.account).get("access_token"))
@@ -362,10 +363,14 @@ class TestApplicationForRefreshInBehaviors(unittest.TestCase):
         # a.k.a. Attempt to refresh unexpired token when AAD available
         self.populate_cache(access_token="old AT", expires_in=3599, refresh_in=-1)
         new_access_token = "new AT"
+
         def _(*args, **kwargs):
-            self.assertEqual(AT_AGING, kwargs.get("refresh_reason"))  # Telemetry
-            return {"access_token": new_access_token}
-        self.app._acquire_token_silent_by_finding_rt_belongs_to_me_or_my_family = _
+            self.assertEqual(
+                "4|84,0,4|", kwargs.get("headers", {}).get(CLIENT_CURRENT_TELEMETRY))
+            return MinimalResponse(
+                status_code=200, text='{"access_token": "%s"}' % new_access_token)
+        self.app.http_client.post = _
+
         self.assertEqual(
             new_access_token,
             self.app.acquire_token_silent(['s1'], self.account).get("access_token"))
@@ -374,8 +379,10 @@ class TestApplicationForRefreshInBehaviors(unittest.TestCase):
         # a.k.a. Attempt refresh unexpired token when AAD unavailable
         old_at = "old AT"
         self.populate_cache(access_token=old_at, expires_in=3599, refresh_in=-1)
-        self.app._acquire_token_silent_by_finding_rt_belongs_to_me_or_my_family = (
-            lambda *args, **kwargs: {"error": "sth went wrong"})
+        def _(*args, **kwargs):
+            self.assertEqual(AT_AGING, kwargs.get("refresh_reason"))  # Telemetry
+            return {"error": "sth went wrong"}
+        self.app._acquire_token_silent_by_finding_rt_belongs_to_me_or_my_family = _
         self.assertEqual(
             old_at,
             self.app.acquire_token_silent(['s1'], self.account).get("access_token"))
@@ -384,8 +391,10 @@ class TestApplicationForRefreshInBehaviors(unittest.TestCase):
         # a.k.a. Attempt refresh expired token when AAD unavailable
         self.populate_cache(access_token="expired at", expires_in=-1, refresh_in=-900)
         error = "something went wrong"
-        self.app._acquire_token_silent_by_finding_rt_belongs_to_me_or_my_family = (
-            lambda *args, **kwargs: {"error": error})
+        def _(*args, **kwargs):
+            self.assertEqual(AT_EXPIRED, kwargs.get("refresh_reason"))  # Telemetry
+            return {"error": error}
+        self.app._acquire_token_silent_by_finding_rt_belongs_to_me_or_my_family = _
         self.assertEqual(
             error,
             self.app.acquire_token_silent_with_error(  # This variant preserves error
@@ -395,8 +404,10 @@ class TestApplicationForRefreshInBehaviors(unittest.TestCase):
         # a.k.a. Attempt refresh expired token when AAD available
         self.populate_cache(access_token="expired at", expires_in=-1, refresh_in=-900)
         new_access_token = "new AT"
-        self.app._acquire_token_silent_by_finding_rt_belongs_to_me_or_my_family = (
-            lambda *args, **kwargs: {"access_token": new_access_token})
+        def _(*args, **kwargs):
+            self.assertEqual(AT_EXPIRED, kwargs.get("refresh_reason"))  # Telemetry
+            return {"access_token": new_access_token}
+        self.app._acquire_token_silent_by_finding_rt_belongs_to_me_or_my_family = _
         self.assertEqual(
             new_access_token,
             self.app.acquire_token_silent(['s1'], self.account).get("access_token"))
